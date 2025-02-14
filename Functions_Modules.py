@@ -1,31 +1,24 @@
+import numpy as np
 
 import torch
-import numpy as np
-torch.cuda.is_available()
 from torch import nn
-from torch import optim
-import os
-import pickle
-device='cuda'
-torch.set_default_tensor_type(torch.FloatTensor)
-import torch.nn as nn
-from torch.nn.utils import weight_norm
 
+# from torch.nn.utils import weight_norm
 
-from Setting_Variables import *
 
 
 class G2F_Module(nn.Module):
     
-    def __init__(self,N_aux,N_ext_aux):
+    def __init__(self, N_aux, N_ext_aux, NX_dim, device):
         super().__init__()
         
         self.N_aux=N_aux
         self.N_ext_aux=N_ext_aux
         self.NX_dim=NX_dim
+        self.device = device
         
-        self.W_noise=nn.Parameter(torch.ones([N_aux,self.NX_dim],device=device))
-        self.W_ext=nn.Parameter(torch.ones([N_ext_aux,self.NX_dim],device=device))
+        self.W_noise=nn.Parameter(torch.ones([N_aux, self.NX_dim], device=self.device))
+        self.W_ext=nn.Parameter(torch.ones([N_ext_aux, self.NX_dim], device=self.device))
                 
         theta_noise=np.float32(0.7**(np.arange(0,self.N_aux))*5) 
         theta_noise_ext=np.float32(0.7**(np.arange(0,self.N_ext_aux))*5) 
@@ -33,10 +26,10 @@ class G2F_Module(nn.Module):
         theta_noise=np.concatenate([theta_noise,theta_noise_ext],0)
 
 
-        self.Theta_noise=nn.Parameter(torch.tensor(theta_noise,device=device))
+        self.Theta_noise=nn.Parameter(torch.tensor(theta_noise, device=self.device))
 
             
-    def forward(self,y,X_aux):
+    def forward(self, y, X_aux):
                     
         X_noise=-torch.abs(self.Theta_noise).unsqueeze(0)*X_aux
             
@@ -53,9 +46,11 @@ class G2F_Module(nn.Module):
 
 class F_Module(nn.Module):
     
-    def __init__(self, F_Ns, N_aux, N_ext_aux, load_weights):
+    def __init__(self, F_Ns, N_aux, N_ext_aux, load_weights, NX_dim, device):
         super().__init__()
                 
+        self.device = device
+
         module=[]
         if len(load_weights)==0:
             for n in range(1,F_Ns.size()[0]):
@@ -65,7 +60,7 @@ class F_Module(nn.Module):
                 with torch.no_grad():
                     
                     module[-1].bias[:]=torch.tensor(0.)
-                    module[-1].weight[:,:]=torch.randn(module[-1].weight.size(),device=device)*0.02
+                    module[-1].weight[:,:]=torch.randn(module[-1].weight.size(),device=self.device)*0.02
                 
                 if n<F_Ns.size()[0]-1:
                 
@@ -92,9 +87,9 @@ class F_Module(nn.Module):
         
         if (self.N_aux+self.N_ext_aux)>0:
             
-            self.G2F=G2F_Module(N_aux, N_ext_aux)
+            self.G2F=G2F_Module(N_aux, N_ext_aux, NX_dim, device)
                     
-    def forward(self,X,t,Input):
+    def forward(self, X, t, Input):
         
         if self.N_aux==0 and self.N_ext_aux==0:
             
@@ -112,7 +107,7 @@ class F_Module(nn.Module):
                 
         if (self.N_aux+self.N_ext_aux)>0:
             
-            y=self.G2F(y.clone(),X_aux.clone())
+            y=self.G2F(y.clone(), X_aux.clone())
             
         return y
     
@@ -120,7 +115,7 @@ class F_Module(nn.Module):
 
 class G_Module(nn.Module):
     
-    def __init__(self, G_Ns, F_Ns, N_aux, sigmas_model):
+    def __init__(self, G_Ns, F_Ns, N_aux, sigmas_model, device):
         super().__init__()
         
         module=[]
@@ -144,11 +139,12 @@ class G_Module(nn.Module):
         self.G_Ns=G_Ns
         self.N_aux=N_aux
         self.F_Ns=F_Ns
+        self.device = device
         
         
     def forward(self,X,t,Input):
         
-        xs=[]
+        # xs=[]
         
         if self.N_aux==0:
         
@@ -169,9 +165,10 @@ class G_Module(nn.Module):
 
 class D_Module(nn.Module):
     
-    def __init__(self,D_Ns,load_weights):
+    def __init__(self, D_Ns, load_weights, device = 'cpu'):
         super().__init__()
                 
+        self.device = device
         module=[]
         if len(load_weights)==0:
        
@@ -182,7 +179,7 @@ class D_Module(nn.Module):
                 with torch.no_grad():
 
                     module[-1].bias[:]=torch.tensor(0.)
-                    module[-1].weight[:,:]=torch.randn(module[-1].weight.size(),device=device)*0.02
+                    module[-1].weight[:,:]=torch.randn(module[-1].weight.size(),device=self.device)*0.02
 
                     module.append(nn.ReLU())   
         else:
